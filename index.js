@@ -60,13 +60,16 @@ app.get('/posts', (req, res) => {
             m.title,
             m.abstract AS content,
             m.image,
-            JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'id', r.id,
-                    'name', r.name,
-                    'vote', r.vote,
-                    'text', r.text
-                )
+            IFNULL(
+                JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'id', r.id,
+                        'name', r.name,
+                        'vote', r.vote,
+                        'text', r.text
+                    )
+                ),
+                '[]'
             ) AS reviews
         FROM movies m
         LEFT JOIN reviews r ON m.id = r.movie_id
@@ -79,13 +82,8 @@ app.get('/posts', (req, res) => {
             res.status(500).send('Errore del server');
             return;
         }
-        const movies = results.map(movie => {
-            return {
-                ...movie,
-                reviews: typeof movie.reviews === 'string' && movie.reviews !== 'null' && movie.reviews !== '[object Object]' ? JSON.parse(movie.reviews) : [],
-            };
-        });
-        res.json(movies);
+        console.log('Film recuperati:', results);
+        res.json(results);
     });
 });
 
@@ -98,13 +96,16 @@ app.get('/posts/:id', (req, res) => {
             m.title,
             m.abstract AS content,
             m.image,
-            JSON_ARRAYAGG(
-                JSON_OBJECT(
-                    'id', r.id,
-                    'name', r.name,
-                    'vote', r.vote,
-                    'text', r.text
-                )
+            IFNULL(
+                JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'id', r.id,
+                        'name', r.name,
+                        'vote', r.vote,
+                        'text', r.text
+                    )
+                ),
+                '[]'
             ) AS reviews
         FROM movies m
         LEFT JOIN reviews r ON m.id = r.movie_id
@@ -119,18 +120,31 @@ app.get('/posts/:id', (req, res) => {
             return;
         }
 
+        console.log('Risultati della query per il film:', results);
+
         if (results.length === 0) {
             res.status(404).send('Movie not found');
             return;
         }
+
         const movie = results[0];
-        movie.reviews = typeof movie.reviews === 'string' && movie.reviews !== 'null' && movie.reviews !== '[object Object]' ? JSON.parse(movie.reviews) : [];
+
+        // Assicuriamoci che le recensioni siano sempre un array
+        try {
+            movie.reviews = JSON.parse(movie.reviews);
+        } catch (error) {
+            movie.reviews = [];
+        }
+
+        console.log('Recensioni restituite:', movie.reviews);
         res.json(movie);
     });
 });
 
 // Rotta per salvare una nuova recensione
 app.post('/reviews', (req, res) => {
+    console.log("Dati ricevuti dal frontend:", req.body);
+    
     const { movieId, name, vote, text } = req.body;
 
     if (!movieId || !name || !vote || !text) {
@@ -149,7 +163,18 @@ app.post('/reviews', (req, res) => {
             res.status(500).send('Errore del server');
             return;
         }
-        res.status(201).send('Recensione aggiunta con successo');
+
+        console.log('Recensione salvata nel database:', results);
+        res.status(201).json({
+            message: 'Recensione aggiunta con successo',
+            review: {
+                id: results.insertId,
+                movie_id: movieId,
+                name,
+                vote,
+                text,
+            },
+        });
     });
 });
 
